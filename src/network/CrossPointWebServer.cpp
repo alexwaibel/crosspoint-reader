@@ -64,6 +64,7 @@
 #include "util/FirmwareIdentity.h"
 #include "util/PluginHttp.h"
 #include "util/PluginLocations.h"
+#include "util/ScheduledLighting.h"
 #include "util/TaskWatchdog.h"
 #include "util/UrlUtils.h"
 
@@ -1599,7 +1600,9 @@ void CrossPointWebServer::handleGetSettings() const {
       case SettingType::TOGGLE: {
         doc["type"] = "toggle";
         if (s.valuePtr) {
-          doc["value"] = static_cast<int>(SETTINGS.*(s.valuePtr));
+          doc["value"] = s.valuePtr == &CrossPointSettings::screenInverted
+                             ? static_cast<int>(scheduledlighting::nightMode())
+                             : static_cast<int>(SETTINGS.*(s.valuePtr));
         }
         break;
       }
@@ -1692,6 +1695,14 @@ void CrossPointWebServer::handlePostSettings() {
   const auto& settings = getSettingsList(&sdFontSystem.registry(), &dictionaries);
   int applied = 0;
 
+  const int lower = doc["warmthLowerBound"] | static_cast<int>(SETTINGS.warmthLowerBound);
+  const int upper = doc["warmthUpperBound"] | static_cast<int>(SETTINGS.warmthUpperBound);
+  if (lower < 0 || upper > 100 || lower > upper) {
+    LOG_ERR("WEB", "Invalid warmth bounds: %d..%d", lower, upper);
+    server->send(400, "text/plain", tr(STR_INVALID_WARMTH_BOUNDS));
+    return;
+  }
+
   for (const auto& s : settings) {
     if (!s.key || s.webHidden) continue;
     if (!doc[s.key].is<JsonVariant>()) continue;
@@ -1700,7 +1711,13 @@ void CrossPointWebServer::handlePostSettings() {
       case SettingType::TOGGLE: {
         const int val = doc[s.key].as<int>() ? 1 : 0;
         if (s.valuePtr) {
-          SETTINGS.*(s.valuePtr) = val;
+          const uint8_t previous = SETTINGS.*(s.valuePtr);
+          if (s.valuePtr == &CrossPointSettings::screenInverted) {
+            scheduledlighting::setManualNightMode(val != 0);
+          } else {
+            SETTINGS.*(s.valuePtr) = val;
+          }
+          if (previous != val) scheduledlighting::settingChanged(s.valuePtr);
         }
         applied++;
         break;
@@ -1723,7 +1740,13 @@ void CrossPointWebServer::handlePostSettings() {
         const int val = doc[s.key].as<int>();
         if (val >= s.valueRange.min && val <= s.valueRange.max) {
           if (s.valuePtr) {
-            SETTINGS.*(s.valuePtr) = static_cast<uint8_t>(val);
+            const uint8_t previous = SETTINGS.*(s.valuePtr);
+            if (s.valuePtr == &CrossPointSettings::frontlightWarmth) {
+              scheduledlighting::setManualWarmth(static_cast<uint8_t>(val));
+            } else {
+              SETTINGS.*(s.valuePtr) = static_cast<uint8_t>(val);
+            }
+            if (previous != val) scheduledlighting::settingChanged(s.valuePtr);
           }
           applied++;
         }

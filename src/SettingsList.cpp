@@ -62,6 +62,26 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
   // applies it to every activity), so it lives in the Display category.
   emit(SettingInfo::Toggle(StrId::STR_NIGHT_MODE, &CrossPointSettings::screenInverted, "screenInverted",
                            StrId::STR_CAT_DISPLAY));
+  emit(SettingInfo::Toggle(StrId::STR_AUTO_NIGHT_MODE, &CrossPointSettings::autoNightMode, "autoNightMode",
+                           StrId::STR_CAT_DISPLAY));
+  emit(SettingInfo::Value(StrId::STR_NIGHT_START_HOUR, &CrossPointSettings::nightStartHour, {0, 23, 1},
+                          "nightStartHour", StrId::STR_CAT_DISPLAY));
+  emit(SettingInfo::Value(StrId::STR_NIGHT_START_MINUTE, &CrossPointSettings::nightStartMinute, {0, 59, 1},
+                          "nightStartMinute", StrId::STR_CAT_DISPLAY));
+  emit(SettingInfo::Value(StrId::STR_NIGHT_END_HOUR, &CrossPointSettings::nightEndHour, {0, 23, 1}, "nightEndHour",
+                          StrId::STR_CAT_DISPLAY));
+  emit(SettingInfo::Value(StrId::STR_NIGHT_END_MINUTE, &CrossPointSettings::nightEndMinute, {0, 59, 1},
+                          "nightEndMinute", StrId::STR_CAT_DISPLAY));
+#if FREEINK_CAP_WARMLIGHT
+  emit(SettingInfo::Toggle(StrId::STR_AUTO_WARMTH, &CrossPointSettings::autoWarmth, "autoWarmth",
+                           StrId::STR_CAT_DISPLAY));
+  emit(SettingInfo::Value(StrId::STR_WARMTH_LOWER_BOUND, &CrossPointSettings::warmthLowerBound, {0, 100, 5},
+                          "warmthLowerBound", StrId::STR_CAT_DISPLAY));
+  emit(SettingInfo::Value(StrId::STR_WARMTH_UPPER_BOUND, &CrossPointSettings::warmthUpperBound, {0, 100, 5},
+                          "warmthUpperBound", StrId::STR_CAT_DISPLAY));
+  emit(SettingInfo::Value(StrId::STR_WARMTH_TRANSITION_MINUTES, &CrossPointSettings::warmthTransitionMinutes,
+                          {1, 120, 1}, "warmthTransitionMinutes", StrId::STR_CAT_DISPLAY));
+#endif
 
   // --- Reader ---
   // Built-in font-family entry. Replaced per-call with a registry-aware

@@ -33,6 +33,7 @@
 #include "util/BmpViewerActivity.h"
 #include "util/FrontlightPanelActivity.h"
 #include "util/FullScreenMessageActivity.h"
+#include "util/ScheduledLighting.h"
 
 static portMUX_TYPE activityManagerSpinlock = portMUX_INITIALIZER_UNLOCKED;
 
@@ -85,7 +86,7 @@ void ActivityManager::renderTaskLoop() {
       HalPowerManager::Lock powerLock;  // Ensure we don't go into low-power mode while rendering
       // Night mode is a global output polarity applied to every activity.
       // The sleep screen forces normal polarity itself (SleepActivity).
-      display.setInverted(SETTINGS.screenInverted != 0);
+      display.setInverted(scheduledlighting::nightMode());
       const uint32_t renderingVisit = screenVisit;
       currentActivity->render(std::move(lock));
       paintedVisit.store(renderingVisit, std::memory_order_release);

@@ -88,6 +88,10 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   };
   forEachBaseSetting(visit);
 
+  doc["nightModeOverrideUntil"] = nightModeOverrideUntil;
+  doc["warmthOverrideUntil"] = warmthOverrideUntil;
+  doc["nightModeSwitchPosition"] = static_cast<uint8_t>(nightModeSwitchPosition);
+
   // Front button remap — managed by RemapFrontButtons sub-activity, not in SettingsList.
   doc["frontButtonBack"] = frontButtonBack;
   doc["frontButtonConfirm"] = frontButtonConfirm;
@@ -191,11 +195,35 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   };
   forEachBaseSetting(visit);
 
+  const auto readOverride = [&](const char* key) -> int64_t {
+    if (doc[key].isNull()) return 0;
+    if (doc[key].is<int64_t>() && doc[key].as<int64_t>() >= -1) return doc[key].as<int64_t>();
+    LOG_ERR("CPS", "Invalid schedule override '%s'", key);
+    needsResave = true;
+    return 0;
+  };
+  nightModeOverrideUntil = readOverride("nightModeOverrideUntil");
+  warmthOverrideUntil = readOverride("warmthOverrideUntil");
+  const uint8_t position = doc["nightModeSwitchPosition"] | uint8_t{0};
+  if (position <= static_cast<uint8_t>(NightModeSwitchPosition::On)) {
+    nightModeSwitchPosition = static_cast<NightModeSwitchPosition>(position);
+  } else {
+    LOG_ERR("CPS", "Invalid night-mode switch position");
+    nightModeSwitchPosition = NightModeSwitchPosition::Unknown;
+    needsResave = true;
+  }
+
   // Plugin System did not exist in older settings files. Preserve the behavior
   // of users who already have SD plugins installed, while keeping the new
   // default disabled on clean installs.
   if (doc["pluginsEnabled"].isNull()) {
     pluginsEnabled = PluginLocations::anyPluginInstalledOnDisk() ? 1 : 0;
+    needsResave = true;
+  }
+
+  if (warmthLowerBound > warmthUpperBound) {
+    LOG_ERR("CPS", "Minimum warmth exceeds maximum; raising maximum to %u", warmthLowerBound);
+    warmthUpperBound = warmthLowerBound;
     needsResave = true;
   }
 

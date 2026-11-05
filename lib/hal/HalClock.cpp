@@ -43,11 +43,13 @@ bool HalClock::localTime(struct tm& out) const {
     if (_sdkRtc.now(dt)) {
       _cachedUtc = epochFromUtc(dt);
       _hasCachedTime = true;
-    } else if (!_hasCachedTime) {
-      return false;
+    } else {
+      if (_hasCachedTime || _lastPollMs == 0) LOG_ERR("CLK", "RTC read failed");
+      _hasCachedTime = false;
     }
     _lastPollMs = now != 0 ? now : 1;  // 0 doubles as the invalidation sentinel
   }
+  if (!_hasCachedTime) return false;
   localtime_r(&_cachedUtc, &out);
   return true;
 }

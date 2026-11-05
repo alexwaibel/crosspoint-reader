@@ -255,6 +255,21 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Night mode: inverted output polarity, applied to every activity per
   // render by ActivityManager. The sleep screen opts out itself.
   uint8_t screenInverted = 0;
+  uint8_t autoNightMode = 0;
+  uint8_t autoWarmth = 0;
+  uint8_t nightStartHour = 18;
+  uint8_t nightStartMinute = 0;
+  uint8_t nightEndHour = 7;
+  uint8_t nightEndMinute = 0;
+  uint8_t warmthLowerBound = 0;
+  uint8_t warmthUpperBound = 100;
+  uint8_t warmthTransitionMinutes = 60;
+  // UTC deadlines keep manual pauses across deep sleep. -1 waits for a valid
+  // clock or a schedule with distinct boundaries; 0 means no pause.
+  int64_t nightModeOverrideUntil = 0;
+  int64_t warmthOverrideUntil = 0;
+  enum class NightModeSwitchPosition : uint8_t { Unknown, Off, On };
+  NightModeSwitchPosition nightModeSwitchPosition = NightModeSwitchPosition::Unknown;
   // Sleep screen cover mode settings
   uint8_t sleepScreenCoverMode = FIT;
   // Sleep screen cover filter

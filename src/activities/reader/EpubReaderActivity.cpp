@@ -59,6 +59,7 @@
 #include "fontIds.h"
 #include "util/BookmarkUtil.h"
 #include "util/ButtonNavigator.h"
+#include "util/ScheduledLighting.h"
 #include "util/ScreenshotUtil.h"
 
 namespace {
@@ -2770,7 +2771,7 @@ void EpubReaderActivity::renderOverlay() {
       const auto* self = static_cast<EpubReaderActivity*>(ctx);
       using MA = EpubReaderMenuActivity::MenuAction;
       const auto action = self->moreItems[i].action;
-      if (action == MA::NIGHT_MODE) GUI.setCheckboxRow(item, SETTINGS.screenInverted);
+      if (action == MA::NIGHT_MODE) GUI.setCheckboxRow(item, scheduledlighting::nightMode());
       if (action == MA::BLUETOOTH) GUI.setCheckboxRow(item, SETTINGS.ble.enabled);
       if (action == MA::FRONTLIGHT) GUI.setCheckboxRow(item, Frontlight.isOn());
     };
@@ -3175,7 +3176,7 @@ void EpubReaderActivity::activateMoreRow(int row) {
       }
       return;
     case MA::NIGHT_MODE:
-      SETTINGS.screenInverted = SETTINGS.screenInverted == 0 ? 1 : 0;
+      scheduledlighting::setManualNightMode(!scheduledlighting::nightMode());
       SETTINGS.saveToFile();
       discardOverlayPage();
       requestUpdate();

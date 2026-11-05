@@ -11,6 +11,7 @@
 #include "ReaderUtils.h"
 #include "components/UITheme.h"
 #include "util/PluginEvents.h"
+#include "util/ScheduledLighting.h"
 #include "util/SlideSwitch.h"
 
 namespace fui = freeink::ui;
@@ -162,7 +163,7 @@ void EpubReaderMenuActivity::activateIndex(const int index) {
   }
 
   if (selectedAction == MenuAction::NIGHT_MODE) {
-    SETTINGS.screenInverted = SETTINGS.screenInverted == 0 ? 1 : 0;
+    scheduledlighting::setManualNightMode(!scheduledlighting::nightMode());
     SETTINGS.saveToFile();
     requestUpdate();
     return;
@@ -235,7 +236,7 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
     } else if (action == MenuAction::AUTO_PAGE_TURN) {
       menuRowItems[i].value = pageTurnLabels[selectedPageTurnOption];
     } else if (action == MenuAction::NIGHT_MODE) {
-      GUI.setCheckboxRow(menuRowItems[i], SETTINGS.screenInverted);
+      GUI.setCheckboxRow(menuRowItems[i], scheduledlighting::nightMode());
     } else if (action == MenuAction::BLUETOOTH) {
       GUI.setCheckboxRow(menuRowItems[i], SETTINGS.ble.enabled);
     } else if (action == MenuAction::FRONTLIGHT) {
