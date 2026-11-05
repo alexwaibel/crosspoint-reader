@@ -40,6 +40,7 @@
 #include "components/UiAppHelpers.h"
 #include "fontIds.h"
 #include "util/PluginEvents.h"
+#include "util/ScheduledLighting.h"
 
 namespace fui = freeink::ui;
 
@@ -229,8 +230,12 @@ void SettingsActivity::toggleSelectedSetting() {
 
   if (setting.type == SettingType::TOGGLE && setting.valuePtr != nullptr) {
     // Toggle the boolean value using the member pointer
-    const bool currentValue = SETTINGS.*(setting.valuePtr);
-    SETTINGS.*(setting.valuePtr) = !currentValue;
+    if (setting.valuePtr == &CrossPointSettings::screenInverted) {
+      scheduledlighting::setManualNightMode(!scheduledlighting::nightMode());
+    } else {
+      const bool currentValue = SETTINGS.*(setting.valuePtr);
+      SETTINGS.*(setting.valuePtr) = !currentValue;
+    }
   } else if (setting.type == SettingType::ENUM && setting.valuePtr != nullptr) {
     const uint8_t currentValue = SETTINGS.*(setting.valuePtr);
     const auto enumLabels = setting.enumLabels();
@@ -273,9 +278,13 @@ void SettingsActivity::toggleSelectedSetting() {
     }
     setting.valueSetter((cur + 1) % totalValues);
   } else if (setting.type == SettingType::VALUE && setting.valuePtr != nullptr) {
-    const int8_t currentValue = SETTINGS.*(setting.valuePtr);
-    if (currentValue + setting.valueRange.step > setting.valueRange.max) {
-      SETTINGS.*(setting.valuePtr) = setting.valueRange.min;
+    const uint8_t currentValue = SETTINGS.*(setting.valuePtr);
+    uint8_t minimum = setting.valueRange.min;
+    uint8_t maximum = setting.valueRange.max;
+    if (setting.valuePtr == &CrossPointSettings::warmthLowerBound) maximum = SETTINGS.warmthUpperBound;
+    if (setting.valuePtr == &CrossPointSettings::warmthUpperBound) minimum = SETTINGS.warmthLowerBound;
+    if (currentValue + setting.valueRange.step > maximum) {
+      SETTINGS.*(setting.valuePtr) = minimum;
     } else {
       SETTINGS.*(setting.valuePtr) = currentValue + setting.valueRange.step;
     }
@@ -416,6 +425,7 @@ void SettingsActivity::toggleSelectedSetting() {
   }
 
   syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
+  scheduledlighting::settingChanged(setting.valuePtr);
   SETTINGS.saveToFile();
   const auto valuePtr = setting.valuePtr;  // rebuildSettings() replaces `setting`
   rebuildSettings();
@@ -516,7 +526,9 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
                           (setting.type == SettingType::ENUM && setting.enumStringValues.empty() &&
                            labels.size() == 2 && labels[0] == StrId::STR_STATE_OFF && labels[1] == StrId::STR_STATE_ON);
     if (checkbox && (setting.valuePtr || setting.valueGetter)) {
-      const bool checked = setting.valuePtr ? SETTINGS.*(setting.valuePtr) != 0 : setting.valueGetter() != 0;
+      const bool checked = setting.valuePtr == &CrossPointSettings::screenInverted
+                               ? scheduledlighting::nightMode()
+                               : (setting.valuePtr ? SETTINGS.*(setting.valuePtr) != 0 : setting.valueGetter() != 0);
       rowValues_[i].clear();
       GUI.setCheckboxRow(rowItems_[i], checked);
     } else {

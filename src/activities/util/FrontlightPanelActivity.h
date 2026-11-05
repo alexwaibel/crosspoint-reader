@@ -21,12 +21,10 @@ class FrontlightPanelActivity final : public Activity, private UiAppHost {
   // lightOn is seeded from the live hardware state (Frontlight.isOn()), which
   // legitimately diverges from the saved SETTINGS.frontlightOn preference —
   // e.g. after a wake with frontlightRestoreOnWake off, the light stays off
-  // live while the saved "was on" preference is deliberately kept (see
-  // main.cpp's restoreLightOn). brightness/warmth have no such divergence
-  // (always restored unconditionally on boot), so only lightOn needs a
-  // touched-by-the-user flag: onExit() must not persist a mirror that never
-  // reflected user intent in the first place.
+  // live while the saved "was on" preference is deliberately kept.
   bool lightOnChanged = false;
+  // Scheduled warmth is live output, not the user's saved manual preference.
+  bool warmthChanged = false;
   bool draggingSlider = false;
   // The touch tile toggles SETTINGS.touchReaderControls between off and this
   // remembered mode, so a Swipe or Inverted Tap user gets their mode back
@@ -59,8 +57,8 @@ class FrontlightPanelActivity final : public Activity, private UiAppHost {
   void adjustWarmth(int delta);
   void toggleLight();
   void runTile(int idx);
-  // Copy the panel's live brightness/warmth/lightOn into SETTINGS and save if
-  // anything actually changed. onExit() runs it on every way out.
+  // Persist manual preferences, never scheduled warmth. onExit() covers every
+  // way out, including sleep while a manual pause is active.
   void persistLightSettings();
   void close();
 

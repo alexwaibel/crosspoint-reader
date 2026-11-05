@@ -48,6 +48,7 @@
 #include "platform/UsbSerialJtagHandoff.h"
 #include "util/ButtonNavigator.h"
 #include "util/PluginEvents.h"
+#include "util/ScheduledLighting.h"
 #include "util/ScreenshotUtil.h"
 #include "util/SlideSwitch.h"
 #include "util/Timezones.h"
@@ -217,9 +218,8 @@ void toggleFrontlight() {
   LOG_INF("LIGHT", "Frontlight toggled %s", lightOn ? "on" : "off");
 }
 
-// Applies the slide switch's position to the bound function at boot, on each
-// change, and when its binding changes; the physical position stays the source
-// of truth, as on stock.
+// Night-mode switch movements pause scheduling until its next boundary.
+// Other bindings keep the physical position as their source of truth.
 void handleSlideSwitch() {
   static int appliedAction = -1;
   static int appliedOn = -1;
@@ -228,12 +228,12 @@ void handleSlideSwitch() {
   // clear the edge before this runs.
   const bool on = gpio.isToggleSwitchOn();
   if (appliedAction == SETTINGS.slideSwitchAction && appliedOn == static_cast<int>(on)) return;
+  const bool bindingChanged = appliedAction != -1 && appliedAction != SETTINGS.slideSwitchAction;
   appliedAction = SETTINGS.slideSwitchAction;
   appliedOn = on;
   switch (SETTINGS.slideSwitchAction) {
     case CrossPointSettings::SLIDE_SWITCH_NIGHT_MODE:
-      if ((SETTINGS.screenInverted != 0) == on) return;
-      SETTINGS.screenInverted = on ? 1 : 0;
+      if (!scheduledlighting::applyNightModeSwitch(on, bindingChanged)) return;
       break;
     case CrossPointSettings::SLIDE_SWITCH_TOUCH_CONTROLS:
       if ((SETTINGS.touchReaderControls != CrossPointSettings::TOUCH_READER_OFF) == on) return;
@@ -700,6 +700,7 @@ void setup() {
                                   ? gpio.isToggleSwitchOn()
                                   : (SETTINGS.frontlightOn != 0 && SETTINGS.frontlightRestoreOnWake != 0);
   Frontlight.begin(SETTINGS.frontlightBrightness, SETTINGS.frontlightWarmth, restoreLightOn);
+  scheduledlighting::update();
 
   switch (wakeupReason) {
     case HalGPIO::WakeupReason::PowerButton:
@@ -887,6 +888,13 @@ void loop() {
 
   // After the exclusive-storage return: it saves settings to the SD card.
   handleSlideSwitch();
+  {
+    RenderLock lock(RenderLock::Mode::Try);
+    if (lock.ownsLock() && scheduledlighting::update()) {
+      renderer.promoteNextRefresh(HalDisplay::FULL_REFRESH);
+      activityManager.requestUpdate();
+    }
+  }
   halTiltSensor.update(SETTINGS.tiltPageTurn, SETTINGS.orientation, activityManager.isReaderActivity());
 
   // Under the render lock, so a step never overlaps the themes' gauge reads.

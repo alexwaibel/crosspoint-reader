@@ -31,7 +31,8 @@ class HalClock {
   void setTimezone(const char* posixTz);
 
   // Current wall-clock time in the configured timezone.
-  // Returns false if RTC is not available.
+  // Reads (including failures) are cached for ten seconds. Returns false if
+  // the RTC is unavailable or its last read failed; never serves stale time.
   bool localTime(struct tm& out) const;
 
   // Get current local hour (0-23) and minute (0-59).

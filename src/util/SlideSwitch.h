@@ -4,8 +4,8 @@
 
 #include "CrossPointSettings.h"
 
-// A slide switch owns the state of the function it is bound to, so the UI must
-// not offer its own toggle for that function or change it behind the switch.
+// Hide duplicate manual controls for switch-bound functions. Scheduled night
+// mode can resume at a boundary without another physical switch movement.
 inline bool slideSwitchOwns(const uint8_t action) {
   return gpio.hasToggleSwitch() && SETTINGS.slideSwitchAction == action;
 }

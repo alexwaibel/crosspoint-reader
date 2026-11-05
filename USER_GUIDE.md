@@ -81,7 +81,7 @@ The Control Center is available on all touch devices. Devices with a frontlight 
 * **Quick toggle (X4 Pro only):** Double-click the **Power** button to turn the frontlight on or off instantly, without opening the panel.
 
 > [!NOTE]
-> Frontlight brightness and warmth are intentionally not listed in **[Display Settings](#361-display)** — the swipe panel is the only place to adjust them. On the X4 Pro, the on/off state can also be toggled with the Power-button double-click above.
+> Manual frontlight brightness and warmth are adjusted in the swipe panel. Automatic warmth bounds and timing are in **[Display Settings](#361-display)**. On the X4 Pro, the on/off state can also be toggled with the Power-button double-click above.
 
 If the frontlight doesn't come back on after the device wakes from sleep, check **Restore Light on Wake** in **[Display Settings](#361-display)** (on by default). Turning it off is intentional if you'd rather have the light stay off on wake and switch it on yourself each time — but it's easy to forget you changed it.
 
@@ -209,6 +209,44 @@ Books cannot be removed from your device through Calibre. Use the web interface 
 Settings are grouped into **System**, **Display**, **Reader**, **Controls**, **Library**, and **Connectivity**. System contains language, keyboard layouts, hidden-file visibility, Clock (where available), firmware updates, and About. Library contains Use Book Metadata, Clear Read Books from Recent List, and Move Finished Books to Read Folder. Time to Sleep is under Display; Clear Reading Cache is under Reader. Connectivity contains Wi-Fi, Bluetooth Page Turner, CrossPoint Sync, OPDS, and the Plugins toggle. The options below describe these settings.
 
 #### 3.6.1 Display
+
+**Scheduled night mode and warmth (devices with an RTC)**
+
+First sync the clock and select your timezone under **Settings > System > Clock**.
+Under Display, set **Night Start Hour (0-23)** / **Night Start Minute** and
+**Night End Hour (0-23)** / **Night End Minute**, then enable **Scheduled Night Mode**,
+**Scheduled Warmth**, or both. The default interval is 18:00 to 07:00 local time.
+The schedule sets Night Mode on (dark background) at night start and off (light
+background) at night end. It sets the selection directly, rather than toggling
+whatever was selected before. Freshly drawn sleep-screen content is unchanged.
+Equal start and end times mean no night interval.
+
+On devices with adjustable warmth, **Minimum Warmth (%)** and **Maximum Warmth (%)**
+bound the automatic output. Warmth rises linearly from the minimum at night start
+to the maximum over **Warmth Transition (minutes)**, stays there, then falls back
+to the minimum over the same period before night end. During the day it stays at
+the minimum. Each ramp is limited to half the night interval, so short intervals
+remain continuous. The schedule checks the clock once per minute while awake,
+and only writes a warmth value when it changes. Transitions can be about one
+minute late, plus up to ten seconds from the shared clock cache.
+The schedule never changes brightness or turns the light on.
+
+Manual night-mode toggles and night-mode switch movements pause only night-mode
+automation. Adjusting the warmth slider pauses only warmth automation. Both
+automatic settings stay enabled and resume at the next night-start or night-end
+boundary. Manual values and pause deadlines are saved with settings, so sleep,
+wake, and restart do not cancel the pause. A switch left in place does not start
+another pause on wake. With equal start/end times there is no transition, so a
+pause remains until you change the schedule. Editing either time or turning an
+automatic setting off and on resumes the corresponding automation.
+
+Automatic output changes do not cause SD-card writes. Disabling scheduled warmth
+restores the saved manual warmth; disabling scheduled night mode keeps the
+current Night Mode selection. The schedule is applied on wake, without waking
+the device at either boundary. An unavailable or unset clock leaves Night Mode
+unchanged and uses manual warmth. Times follow the configured timezone and
+daylight-saving rule. Clock corrections take effect on the next minute check;
+timezone setting changes are checked immediately.
 
 - **Sleep Screen**: Which sleep screen to display when the device sleeps:
   

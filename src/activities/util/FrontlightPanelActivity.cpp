@@ -18,6 +18,7 @@
 #include "components/icons/customListIcons.h"
 #include "components/icons/listIcons.h"
 #include "components/icons/readerToolbarIcons.h"
+#include "util/ScheduledLighting.h"
 #include "util/SlideSwitch.h"
 
 namespace fui = freeink::ui;
@@ -68,6 +69,7 @@ void FrontlightPanelActivity::onEnter() {
   warmth = Frontlight.warmth();
   lightOn = Frontlight.isOn();
   lightOnChanged = false;
+  warmthChanged = false;
 
   // Seed the touch tile's restore mode from the live setting, so toggling off
   // and back on within this session returns to the mode the user had.
@@ -88,16 +90,10 @@ void FrontlightPanelActivity::onEnter() {
 
 void FrontlightPanelActivity::persistLightSettings() {
   if (!Frontlight.present()) return;
-  // brightness/warmth are always restored unconditionally on boot (see
-  // main.cpp), so they never diverge from SETTINGS at onEnter() — comparing
-  // against SETTINGS here only fires on a genuine user change. lightOn has
-  // no such guarantee (see lightOnChanged's declaration), so it's gated on
-  // the user actually having touched it this session instead.
-  const bool changed = SETTINGS.frontlightBrightness != brightness || SETTINGS.frontlightWarmth != warmth ||
+  const bool changed = SETTINGS.frontlightBrightness != brightness || warmthChanged ||
                        (lightOnChanged && SETTINGS.frontlightOn != (lightOn ? 1 : 0));
   if (changed) {
     SETTINGS.frontlightBrightness = brightness;
-    SETTINGS.frontlightWarmth = warmth;
     if (lightOnChanged) SETTINGS.frontlightOn = lightOn ? 1 : 0;
     SETTINGS.saveToFile();
   }
@@ -124,7 +120,8 @@ void FrontlightPanelActivity::onWarmthEvent(const fui::ActionEvent& event, void*
   auto* self = static_cast<FrontlightPanelActivity*>(user);
   if (event.dragPermille < 0) return;
   self->warmth = percentFromPermille(event.dragPermille);
-  Frontlight.setWarmth(self->warmth);
+  self->warmthChanged = true;
+  scheduledlighting::setManualWarmth(self->warmth);
 }
 
 void FrontlightPanelActivity::onToggleEvent(const fui::ActionEvent&, void* user) {
@@ -146,7 +143,7 @@ void FrontlightPanelActivity::onTileEvent(const fui::ActionEvent& event, void* u
 void FrontlightPanelActivity::runTile(const int idx) {
   switch (idx) {
     case 0:  // Night mode (inverted output polarity, applied to the whole UI)
-      SETTINGS.screenInverted = SETTINGS.screenInverted ? 0 : 1;
+      scheduledlighting::setManualNightMode(!scheduledlighting::nightMode());
       SETTINGS.saveToFile();
       // Inversion rewrites every pixel; take the clean waveform so the panel
       // does not keep a ghost of the old polarity.
@@ -211,12 +208,14 @@ void FrontlightPanelActivity::adjustBrightness(const int delta) {
 }
 
 void FrontlightPanelActivity::adjustWarmth(const int delta) {
+  if (SETTINGS.autoWarmth) warmth = Frontlight.warmth();
   int next = static_cast<int>(warmth) + delta;
   if (next < 0) next = 0;
   if (next > 100) next = 100;
   if (next == warmth) return;
   warmth = static_cast<uint8_t>(next);
-  Frontlight.setWarmth(warmth);
+  warmthChanged = true;
+  scheduledlighting::setManualWarmth(warmth);
   requestUpdate();
 }
 
@@ -380,6 +379,7 @@ void FrontlightPanelActivity::buildPanelScreen(UiScreen& screen) {
     addSliderRow(screen, tr(STR_BRIGHTNESS), brightness, ACTION_BRIGHTNESS, ACTION_BRIGHTNESS_STEP,
                  /*showToggle=*/!slideSwitchOwnsLight());
     if (Frontlight.hasColorTemperature()) {
+      if (SETTINGS.autoWarmth) warmth = Frontlight.warmth();
       addSliderRow(screen, tr(STR_WARMTH), warmth, ACTION_WARMTH, ACTION_WARMTH_STEP, /*showToggle=*/false);
     }
     screen.spacer(theme.spaceSm);
@@ -392,7 +392,7 @@ void FrontlightPanelActivity::buildPanelScreen(UiScreen& screen) {
         fui::bitmapFromIcon(icon_moon_32), fui::bitmapFromIcon(icon_refresh_cw_32),
         fui::bitmapFromIcon(icon_reader_text_24), fui::bitmapFromIcon(icon_pointer_32),
         fui::bitmapFromIcon(SETTINGS.ble.enabled ? icon_bluetooth_32 : icon_bluetooth_off_32)};
-    const bool enabled[kTileCount] = {SETTINGS.screenInverted != 0, false, false,
+    const bool enabled[kTileCount] = {scheduledlighting::nightMode(), false, false,
                                       SETTINGS.touchReaderControls != CrossPointSettings::TOUCH_READER_OFF,
                                       SETTINGS.ble.enabled != 0};
     static constexpr fui::Rotation rotations[] = {fui::Rotation::None, fui::Rotation::CW90, fui::Rotation::R180,

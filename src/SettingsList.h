@@ -282,6 +282,18 @@ inline bool isHiddenOnDevice(const SettingInfo& s) {
       return !Frontlight.present() || slideSwitchOwnsLight();
     case StrId::STR_NIGHT_MODE:
       return slideSwitchOwns(CrossPointSettings::SLIDE_SWITCH_NIGHT_MODE);
+    case StrId::STR_AUTO_NIGHT_MODE:
+      return !halClock.isAvailable();
+    case StrId::STR_AUTO_WARMTH:
+    case StrId::STR_WARMTH_LOWER_BOUND:
+    case StrId::STR_WARMTH_UPPER_BOUND:
+    case StrId::STR_WARMTH_TRANSITION_MINUTES:
+      return !halClock.isAvailable() || !Frontlight.hasColorTemperature();
+    case StrId::STR_NIGHT_START_HOUR:
+    case StrId::STR_NIGHT_START_MINUTE:
+    case StrId::STR_NIGHT_END_HOUR:
+    case StrId::STR_NIGHT_END_MINUTE:
+      return !halClock.isAvailable();
     case StrId::STR_TOUCH_READER_CONTROLS:
       return slideSwitchOwns(CrossPointSettings::SLIDE_SWITCH_TOUCH_CONTROLS);
     // Tilt page turn needs an IMU with a gyroscope. A failed probe on one boot
