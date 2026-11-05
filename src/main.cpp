@@ -49,6 +49,7 @@
 #include "util/ButtonNavigator.h"
 #include "util/PluginEvents.h"
 #include "util/ScreenshotUtil.h"
+#include "util/SleepProgressSync.h"
 #include "util/SlideSwitch.h"
 #include "util/Timezones.h"
 
@@ -79,6 +80,7 @@ constexpr unsigned long X4PRO_POWER_CLICK_MAX_HOLD_MS = 300;
 // A wake hold must never become an in-app power-button action.  Boot may continue
 // while the button is held; swallow the one release that ends that wake gesture.
 static bool wakePowerReleasePending = false;
+static bool sleepSyncResumed = false;
 
 // Fonts
 EpdFont notosans14RegularFont(&notosans_14_regular);
@@ -145,8 +147,8 @@ enum class BootResume : uint8_t {
 // the current activity. WiFi activities call silentRestart() in onExit() to
 // clear heap fragmentation on the way out, but deep sleep is a full chip reset
 // on wake and already clears the heap, so rebooting here would just power the
-// device back up against the user's sleep gesture. Never cleared:
-// startDeepSleep() does not return, so a set latch only ends at the wakeup reset.
+// device back up against the user's sleep gesture. Cancelled sleep sync clears
+// the latch before resuming; hardware sleep ends it at the wakeup reset.
 static bool deepSleepInProgress = false;
 
 // A silent restart is internal maintenance, so the light must come back exactly
@@ -467,6 +469,9 @@ static bool holdSleepWhileUsbPowered() {
 // Enter deep sleep mode
 void enterDeepSleep(bool fromTimeout = false) {
   HalPowerManager::Lock powerLock;  // Ensure we are at normal CPU frequency for sleep preparation
+  const bool monitorWake = KOREADER_STORE.isSleepSyncEnabled() && KOREADER_STORE.hasCredentials() &&
+                           activityManager.isReaderActivity() && gpio.beginSleepWakeMonitor();
+  const auto cancelSync = [] { return gpio.sleepWakeRequested(); };
   APP_STATE.lastSleepFromReader = activityManager.isReaderActivity();
 
   // Sleep may end in a power-off (battery death, latch); persist the clock
@@ -498,11 +503,34 @@ void enterDeepSleep(bool fromTimeout = false) {
     Storage.remove(SLEEP_FRAME_FILE);
   }
 
+  Frontlight.setOn(false);
+  sleepProgressSync::run(bluetoothStopped && monitorWake, renderer, cancelSync);
+
   // Tear down WiFi so the modem power domain isn't held alive across deep sleep.
   // Wake from deep sleep is effectively a chip reset, so no state needs to survive.
   if (WiFi.getMode() != WIFI_MODE_NULL) {
     WiFi.disconnect(true);
     WiFi.mode(WIFI_OFF);
+  }
+
+  if (monitorWake) gpio.endSleepWakeMonitor();
+  if (monitorWake && cancelSync()) {
+    LOG_INF("SLPSYNC", "Wake requested; resuming without sleep");
+    deepSleepInProgress = false;
+    wakePowerReleasePending = true;
+    sleepSyncResumed = true;
+    allowSleepAt = millis() + 2000;
+    lastX4ProPowerClickAt = 0;
+    gpio.update();
+    delay(10);
+    gpio.update();
+    Frontlight.setOn(SETTINGS.frontlightOn != 0 && SETTINGS.frontlightRestoreOnWake != 0);
+    if (APP_STATE.lastSleepFromReader && !APP_STATE.openEpubPath.empty()) {
+      activityManager.goToReader(APP_STATE.openEpubPath);
+    } else {
+      activityManager.goHome();
+    }
+    return;
   }
 
 #if FREEINK_DEVICE_PICCO
@@ -931,17 +959,27 @@ void loop() {
   // Check for any user activity (button press or release) or active background work
   static unsigned long lastActivityTime = millis();
   if (gpio.wasAnyPressed() || gpio.wasAnyReleased() || gpio.wasTouchActivity() || halTiltSensor.hadActivity() ||
-      remoteActed || activityManager.preventAutoSleep()) {
+      remoteActed || activityManager.preventAutoSleep() || sleepSyncResumed) {
     lastActivityTime = millis();         // Reset inactivity timer
     powerManager.setPowerSaving(false);  // Restore normal CPU frequency on user activity
+    sleepSyncResumed = false;
   }
 
-  // Let wake continue as soon as its hold has been verified. The release can
-  // arrive after setup, so consume that one input frame rather than making it
-  // a page turn, refresh, or other short power-button action.
-  if (wakePowerReleasePending && !gpio.isPressed(HalGPIO::BTN_POWER)) {
-    wakePowerReleasePending = false;
-    return;
+  // Shared Confirm/Power releases can be classified one frame after the raw
+  // contact ends. Suppression must survive that next input update.
+  static bool wakePowerReleaseObserved = false;
+  if (wakePowerReleasePending) {
+    if (!gpio.rawInputActive() && !gpio.isPressed(HalGPIO::BTN_POWER)) {
+      if (wakePowerReleaseObserved) {
+        wakePowerReleasePending = false;
+        wakePowerReleaseObserved = false;
+      } else {
+        wakePowerReleaseObserved = true;
+      }
+      return;
+    }
+    wakePowerReleaseObserved = false;
+    if (gpio.wasAnyPressed() || gpio.wasAnyReleased()) return;
   }
 
   static bool screenshotButtonsReleased = true;
@@ -1028,7 +1066,7 @@ void loop() {
                                         SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP &&
                                         gpio.getPowerButtonHeldTime() <= X4PRO_POWER_CLICK_MAX_HOLD_MS;
 
-  if (!x4ProAwaitingClickWindow && powerReleasedSinceWake && millis() >= allowSleepAt &&
+  if (!wakePowerReleasePending && !x4ProAwaitingClickWindow && powerReleasedSinceWake && millis() >= allowSleepAt &&
       gpio.isPressed(HalGPIO::BTN_POWER) && gpio.getPowerButtonHeldTime() > SETTINGS.getPowerButtonDuration()) {
     // If the screenshot combination is potentially being pressed, don't sleep
     if (gpio.isPressed(HalGPIO::BTN_DOWN)) {

@@ -86,6 +86,9 @@ class HalGPIO {
   // expander key, one I2C read), without going through the debounced state.
   // Cheap enough to call every few ms.
   bool rawInputActive();
+  bool beginSleepWakeMonitor();
+  void endSleepWakeMonitor();
+  bool sleepWakeRequested() const;
   bool hasTouch() const;
   // Capacitive Home key reported by the touch controller (X4 Pro). The tap
   // event fires on release and excludes a long hold.
@@ -141,6 +144,10 @@ class HalGPIO {
 
   WakeupReason getWakeupReason() const;
 
+ private:
+  static void pollSleepWake(void* context);
+
+ public:
   // Button indices
   static constexpr uint8_t BTN_BACK = 0;
   static constexpr uint8_t BTN_CONFIRM = 1;

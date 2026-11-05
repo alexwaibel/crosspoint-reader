@@ -793,6 +793,18 @@ SavedProgressPosition ProgressMapper::toSavedProgress(const std::shared_ptr<Epub
   return result;
 }
 
+CrossPointPosition ProgressMapper::mapRemoteProgress(const std::shared_ptr<Epub>& epub,
+                                                     const KOReaderProgress& progress, GfxRenderer& renderer,
+                                                     const CrossPointPosition& localPosition) {
+  const SavedProgressPosition saved{progress.progress, progress.percentage};
+  CrossPointPosition mapped = toCrossPoint(epub, saved, renderer, localPosition.spineIndex, localPosition.totalPages);
+  if (!mapped.hasVisibleTextOffset && progress.position) {
+    const bool sameXPath = progress.position->xpath == progress.progress;
+    if (const auto rich = fromRichPosition(epub, *progress.position, renderer, sameXPath)) mapped = *rich;
+  }
+  return mapped;
+}
+
 std::optional<CrossPointPosition> ProgressMapper::fromRichPosition(const std::shared_ptr<Epub>& epub,
                                                                    const KOReaderRichPosition& rich,
                                                                    GfxRenderer& renderer, bool xpathAlreadyTried) {
