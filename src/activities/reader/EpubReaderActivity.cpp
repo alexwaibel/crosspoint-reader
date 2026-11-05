@@ -60,6 +60,7 @@
 #include "util/BookmarkUtil.h"
 #include "util/ButtonNavigator.h"
 #include "util/ScreenshotUtil.h"
+#include "util/SleepProgressSync.h"
 
 namespace {
 // The X4 Pro and X4 Classic carry the X4's panel but sit outside isXteinkDevice()
@@ -206,6 +207,7 @@ void moveFinishedBookToReadFolder(const std::string& srcPath, const std::string&
     APP_STATE.openEpubPath = dstPath;
     APP_STATE.saveToFile();
   }
+  sleepProgressSync::bookMoved(srcPath, dstPath);
 }
 
 // A button contact is closed right now. Reads the Xteink ADC ladder, power pin, and T5S3 expander
@@ -1326,6 +1328,21 @@ unsigned long EpubReaderActivity::confirmLongPressThreshold() const {
     default:
       return 0;
   }
+}
+
+void EpubReaderActivity::prepareForSleep() {
+  ReaderActivity::prepareForSleep();
+  if (!KOREADER_STORE.isSleepSyncEnabled() || !KOREADER_STORE.hasCredentials() || !epub || !section ||
+      !pageRendered.load(std::memory_order_acquire)) {
+    return;
+  }
+  if ((currentSpineIndex != lastSavedSpineIndex || section->currentPage != lastSavedPage ||
+       section->estimatedTotalPages() != lastSavedPageCount) &&
+      !saveProgress(currentSpineIndex, section->currentPage, section->estimatedTotalPages())) {
+    LOG_ERR("SLPSYNC", "Cannot save progress; skipping sleep sync");
+    return;
+  }
+  sleepProgressSync::prepare(epub, getCurrentPosition());
 }
 
 bool EpubReaderActivity::launchKOReaderSync() {

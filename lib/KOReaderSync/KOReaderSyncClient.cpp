@@ -130,7 +130,9 @@ KOReaderSyncClient::Error KOReaderSyncClient::createUser() {
 }
 
 KOReaderSyncClient::Error KOReaderSyncClient::getProgress(const std::string& documentHash,
-                                                          KOReaderProgress& outProgress) {
+                                                          KOReaderProgress& outProgress,
+                                                          const std::function<bool()>& shouldAbort,
+                                                          const uint32_t timeoutMs) {
   lastHttpCode = 0;
   if (!KOREADER_STORE.hasCredentials()) {
     LOG_DBG("KOSync", "No credentials configured");
@@ -144,18 +146,32 @@ KOReaderSyncClient::Error KOReaderSyncClient::getProgress(const std::string& doc
 
   freeink::SecureHttpClient http;
   http.setInsecure();
+  http.setTimeout(timeoutMs);
   if (!http.begin(url)) {
     LOG_ERR("KOSync", "Bad URL: %s", url.c_str());
     return NETWORK_ERROR;
   }
   applyCustomHeaders(http);
   applyAuthHeaders(http);
-  const int httpCode = http.GET();
+  std::string response;
+  const int httpCode = shouldAbort ? http.GET(
+                                         [&](const uint8_t* data, const size_t size) {
+                                           constexpr size_t MAX_SLEEP_RESPONSE = 8192;
+                                           if (size > MAX_SLEEP_RESPONSE - response.size()) {
+                                             LOG_ERR("KOSync", "Sleep sync response exceeds %u bytes",
+                                                     static_cast<unsigned>(MAX_SLEEP_RESPONSE));
+                                             return false;
+                                           }
+                                           response.append(reinterpret_cast<const char*>(data), size);
+                                           return true;
+                                         },
+                                         shouldAbort)
+                                   : http.GET();
   lastHttpCode = httpCode;
 
   LOG_DBG("KOSync", "Get progress response: %d", httpCode);
 
-  if (httpCode <= 0) {
+  if (httpCode <= 0 || (shouldAbort && (http.aborted() || http.callbackAborted() || !http.responseComplete()))) {
     http.end();
     return NETWORK_ERROR;
   }
@@ -171,7 +187,7 @@ KOReaderSyncClient::Error KOReaderSyncClient::getProgress(const std::string& doc
 
   if (httpCode >= 200 && httpCode < 300) {
     JsonDocument doc;
-    const DeserializationError error = deserializeJson(doc, http.getString().c_str());
+    const DeserializationError error = deserializeJson(doc, shouldAbort ? response.c_str() : http.getString().c_str());
     http.end();
 
     if (error) {
@@ -215,7 +231,9 @@ KOReaderSyncClient::Error KOReaderSyncClient::getProgress(const std::string& doc
   return SERVER_ERROR;
 }
 
-KOReaderSyncClient::Error KOReaderSyncClient::updateProgress(const KOReaderProgress& progress) {
+KOReaderSyncClient::Error KOReaderSyncClient::updateProgress(const KOReaderProgress& progress,
+                                                             const std::function<bool()>& shouldAbort,
+                                                             const uint32_t timeoutMs) {
   lastHttpCode = 0;
   if (!KOREADER_STORE.hasCredentials()) {
     LOG_DBG("KOSync", "No credentials configured");
@@ -278,6 +296,7 @@ KOReaderSyncClient::Error KOReaderSyncClient::updateProgress(const KOReaderProgr
 
   freeink::SecureHttpClient http;
   http.setInsecure();
+  http.setTimeout(timeoutMs);
   if (!http.begin(url)) {
     LOG_ERR("KOSync", "Bad URL: %s", url.c_str());
     return NETWORK_ERROR;
@@ -285,13 +304,16 @@ KOReaderSyncClient::Error KOReaderSyncClient::updateProgress(const KOReaderProgr
   applyCustomHeaders(http);
   applyAuthHeaders(http);
   http.addHeader("Content-Type", "application/json");
-  const int httpCode = http.sendRequest("PUT", body);
+  const int httpCode = http.sendRequest(
+      "PUT", reinterpret_cast<const uint8_t*>(body.data()), body.size(), [](const uint8_t*, size_t) { return true; },
+      shouldAbort);
+  const bool aborted = http.aborted();
   http.end();
   lastHttpCode = httpCode;
 
   LOG_DBG("KOSync", "Update progress response: %d", httpCode);
 
-  if (httpCode <= 0) return NETWORK_ERROR;
+  if (aborted || httpCode <= 0) return NETWORK_ERROR;
   // Any 2xx accepts the progress. The reference kosync server answers 200,
   // but Spring-based KOSync implementations (BookLore/grimmory) answer a PUT
   // with the idiomatic 201/204, which used to land in SERVER_ERROR and made

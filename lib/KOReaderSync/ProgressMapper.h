@@ -56,6 +56,9 @@ class ProgressMapper {
                                          GfxRenderer& renderer, int currentSpineIndex = -1,
                                          int totalPagesInCurrentSpine = 0, int fallbackTotalPages = 0);
 
+  static CrossPointPosition mapRemoteProgress(const std::shared_ptr<Epub>& epub, const KOReaderProgress& progress,
+                                              GfxRenderer& renderer, const CrossPointPosition& localPosition);
+
   /**
    * Convert a rich CrossPoint position (downloaded from a crosspoint-sync
    * server) directly to a CrossPoint position. Its standard KOReader XPath is
